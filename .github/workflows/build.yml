@@ -1,0 +1,106 @@
+name: Build upstream_dns_file
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 22 * * *"
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - ".gitignore"
+      - "LICENSE"
+      - "README.md"
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout codebase
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set variables
+        run: |
+          echo "TAG_NAME=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
+          echo "RELEASE_NAME=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
+        shell: bash
+      - name: Fetch Data
+        run: |
+          curl -L https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/Global/Global_All.list -o global.list
+          curl -L https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/ChinaMaxNoIP/ChinaMaxNoIP_All.list -o china.list
+        shell: bash
+      - name: Build files
+        run: |
+          mkdir -p ./upstream_dns_file
+
+          global_output="./upstream_dns_file/global.txt"
+          > "$global_output"
+          china_output="./upstream_dns_file/china.txt"
+          > "$china_output"
+
+          global_domains=""
+          china_domains=""
+
+          while IFS= read -r line; do
+              if [[ $line == DOMAIN,* ]]; then
+                  domain=${line#DOMAIN,}
+                  global_domains+="$domain/"
+                  china_domains+="*.$domain/"
+              elif [[ $line == DOMAIN-SUFFIX,* ]]; then
+                  domain_suffix=${line#DOMAIN-SUFFIX,}
+                  global_domains+="$domain_suffix/"
+              fi
+          done < "global.list"
+
+          if [[ -n $global_domains ]]; then
+              echo "[/${global_domains}]__GLOBAL_DNS_PLACEHOLDER__" >> "$global_output"
+          fi
+
+          if [[ -n $china_domains ]]; then
+              echo "[/${china_domains}]__CHINA_DNS_PLACEHOLDER__" >> "$global_output"
+          fi
+
+          echo "转换完成，结果已写入 $global_output"
+
+          global_domains=""
+          china_domains=""
+
+          while IFS= read -r line; do
+              if [[ $line == DOMAIN,* ]]; then
+                  domain=${line#DOMAIN,}
+                  china_domains+="$domain/"
+                  global_domains+="*.$domain/"
+              elif [[ $line == DOMAIN-SUFFIX,* ]]; then
+                  domain_suffix=${line#DOMAIN-SUFFIX,}
+                  china_domains+="$domain_suffix/"
+              fi
+          done < "china.list"
+
+          if [[ -n $china_domains ]]; then
+              echo "[/${china_domains}]__CHINA_DNS_PLACEHOLDER__" >> "$china_output"
+          fi
+          if [[ -n $global_domains ]]; then
+              echo "[/${global_domains}]__GLOBAL_DNS_PLACEHOLDER__" >> "$china_output"
+          fi
+
+          echo "转换完成，结果已写入 $china_output"
+        shell: bash
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: ${{ success() }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          generate_release_notes: true
+          files: |
+            ./upstream_dns_file/china.txt
+            ./upstream_dns_file/global.txt
+      # - name: Telegram Notification
+      #   run: |
+      #     text="🆕 $(date +"%Y-%m-%d %H:%M:%S")"$'\n\n'"🌐 数据源为 blackmatrix7/ios_rule_script 的 AdGuard Home upstream_dns_file 文件 已更新"$'\n\n'"📘 查看说明 https://t.me/zhetengsha/xxx"
+      #     echo $text
+      #     curl -F disable_notification=true -F "chat_id=-1001771725356" -F "text=$text" "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage"
