@@ -86,7 +86,7 @@ jobs:
           echo "转换完成，结果已写入 $china_output"
         shell: bash
       - name: Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         if: ${{ success() }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
